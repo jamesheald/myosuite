@@ -48,6 +48,7 @@ class FingerReachEnvV0(PipelineEnv):
     mj_model.opt.solver = mujoco.mjtSolver.mjSOL_CG
     mj_model.opt.iterations = 6
     mj_model.opt.ls_iterations = 6
+    mj_model.opt.timestep = 0.002
 
     sys = mjcf.load_model(mj_model)
 
