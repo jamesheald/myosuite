@@ -102,11 +102,6 @@ class FingerReachEnvV0(PipelineEnv):
     for site, span in self._target_reach_range.items():
       target = jax.random.uniform(rng1, (3,), minval=jp.array(span[0]), maxval=jp.array(span[1]))
       info[site + '_target'] = target
-      # data_site_xpos = data.site_xpos.copy()
-      # data_site_xpos = data_site_xpos.at[self._target_sids[0]].set(target)
-      # data.replace(site_xpos = data_site_xpos)
-      # data.site_xpos[self._target_sids[0]] = target
-      # data.site_xpos = data.site_xpos.at[self._target_sids[isite]].set(target)
 
     obs_dict = self._get_obs_dict(data, info)
     obs = self._get_obs(obs_dict)
@@ -208,31 +203,6 @@ def main():
   envs.register_environment(env_name, FingerReachEnvV0)
   env = envs.get_environment(env_name)
 
-  # import os
-  # cwd = os.path.dirname(os.path.abspath(__file__))
-
-  # backend = 'positional'  # @param ['generalized', 'positional', 'spring']
-  # env = envs.create(env_name=env_name, backend=backend, episode_length=env._episode_length)
-
-  # jit_env_reset = jax.jit(env.reset)
-  # jit_env_step = jax.jit(env.step)
-
-  # rollouts = []
-  # for episode in range(2):
-  #   rng = jax.random.PRNGKey(seed=episode)
-  #   state = jit_env_reset(rng=rng)
-  #   rollout = {}
-  #   rollout['IFtip_target'] = state.info['IFtip_target']
-  #   states = []
-  #   while not (state.done or state.info['truncation']):
-  #     states.append(state.pipeline_state)
-  #     act_rng, rng = jax.random.split(rng)
-  #     act = -0.1 * jax.random.normal(act_rng, (5,))
-  #     state = jit_env_step(state, act)
-
-  #   rollout['states'] = states
-  #   rollouts.append(rollout)
-
   def _render(rollouts, video_type='single'):
 
     videos = []
@@ -253,21 +223,6 @@ def main():
         media.write_video(cwd + '/video' + str(i) + '.mp4', video, fps=1.0 / env.dt, qp=18) 
 
     return None
-  
-  # _render(rollouts)
-
-  # # define the jit reset/step functions
-  # jit_reset = jax.jit(env.reset)
-  # jit_step = jax.jit(env.step)
-  # # initialize the state
-  # state = jit_reset(jax.random.PRNGKey(0))
-  # rollout = [state.pipeline_state]
-
-  # # grab a trajectory
-  # for i in range(10):
-  #   ctrl = -0.1 * jp.ones(env.sys.nu)
-  #   state = jit_step(state, ctrl)
-  #   rollout.append(state.pipeline_state)
 
   train_fn = functools.partial(
       ppo.train, num_timesteps=20_000_000, num_evals=5, reward_scaling=0.1,
@@ -308,14 +263,13 @@ def main():
   print(f'time to train: {times[-1] - times[1]}')
 
   import os
-  # save_path = os.path.join(os.makedirs(run_path))
   cwd = os.path.dirname(os.path.abspath(__file__))
 
   model.save_params(cwd + '/params', params)
   params = model.load_params(cwd + '/params')
   inference_fn = make_inference_fn(params)
 
-  backend = 'positional'  # @param ['generalized', 'positional', 'spring']
+  backend = 'positional' # @param ['generalized', 'positional', 'spring']
   env = envs.create(env_name=env_name, backend=backend, episode_length=env._episode_length)
 
   jit_env_reset = jax.jit(env.reset)
