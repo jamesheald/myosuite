@@ -62,12 +62,13 @@ class ArmReachEnvV0(PipelineEnv):
 
     # amputee
     spec = mujoco.MjSpec.from_file((path / model_filename).as_posix())
-
-    b_lunate = spec.find_body('lunate')
+    # b_lunate = spec.find_body('lunate')
+    b_lunate = spec.body('lunate')
     b_lunate_pos = b_lunate.pos.copy()
 
     # add site to the parent body
-    b_radius = spec.find_body('radius')
+    # b_radius = spec.find_body('radius')
+    b_radius = spec.body('radius')
     b_radius.add_site(
       name='wrist',
         pos=b_lunate_pos,
@@ -75,7 +76,8 @@ class ArmReachEnvV0(PipelineEnv):
     )
 
     # add a target site
-    spec.find_body('world').add_site(name='wrist_target', type=mujoco.mjtGeom.mjGEOM_SPHERE, size=[0.02, 0.02, 0.02], pos=[-0.2, -0.2, 1.2], rgba=[0, 1, 0, .3])
+    # spec.find_body('world').add_site(name='wrist_target', type=mujoco.mjtGeom.mjGEOM_SPHERE, size=[0.02, 0.02, 0.02], pos=[-0.2, -0.2, 1.2], rgba=[0, 1, 0, .3])
+    spec.body('world').add_site(name='wrist_target', type=mujoco.mjtGeom.mjGEOM_SPHERE, size=[0.02, 0.02, 0.02], pos=[-0.2, -0.2, 1.2], rgba=[0, 1, 0, .3])
 
     # spec.detach_body(b_lunate)
 

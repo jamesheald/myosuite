@@ -22,7 +22,7 @@ source /nfs/nhome/live/jheald/.bashrc
 module load miniconda
 
 conda deactivate
-conda activate infosyn2
+conda activate infosyn
 
 export WANDB_API_KEY=9ae130eea17d49e2bd1deafd27c8a8de06f66830
 
