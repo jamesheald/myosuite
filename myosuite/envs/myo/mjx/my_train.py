@@ -50,6 +50,38 @@ def main(env_name):
   import imageio
   import mujoco
 
+  from mujoco_playground._src.mjx_env import State
+  from jax import numpy as jp
+  from flax import struct
+
+  def make_minimal_state(full_state):
+    """Create a minimal State suitable for rendering only."""
+
+    @struct.dataclass
+    class MinimalData:
+        qpos: jp.ndarray
+        qvel: jp.ndarray
+        mocap_pos: jp.ndarray
+        mocap_quat: jp.ndarray
+        xfrc_applied: jp.ndarray
+
+    minimal_data = MinimalData(
+        qpos=full_state.data.qpos,
+        qvel=full_state.data.qvel,
+        mocap_pos=full_state.data.mocap_pos,
+        mocap_quat=full_state.data.mocap_quat,
+        xfrc_applied=full_state.data.xfrc_applied
+    )
+
+    return State(
+        data=minimal_data,      # only the arrays used for rendering
+        obs={},                 # empty dummy
+        reward=jp.array(0.0),   # dummy
+        done=jp.array(False),    # dummy
+        metrics={},             # empty
+        info={}                 # empty
+    )
+
   # The function that generates the video, now outside of the Brax loop
   def policy_params_fn(num_steps, make_policy, params):
 
@@ -76,22 +108,35 @@ def main(env_name):
       key, subkey = jax.random.split(key)
       state = jit_env_reset(rng=subkey[None,:])
       eval_env._mj_model.site_pos[eval_env._target_sids] = state.info['targets']
-      # state = jax.jit(eval_env.reset)(rng=subkey)
 
       frames = []
       frame = eval_env.render(state, height=240, width=320, camera=cam_name)
       frames.append(frame)
+      rollout = [make_minimal_state(state)]
       for i in range(eval_env._max_steps):
           key, subkey = jax.random.split(key)
           action, _ = policy(state.obs, subkey[None, :])
-          # action, _ = policy(state.obs, subkey)
-          # state = jax.jit(eval_env.step)(state, action)   # JIT-safe step
-          state = jit_env_step(state, action)   # JIT-safe step
-          frame = eval_env.render(state, height=240, width=320, camera=cam_name)
-          frames.append(frame)
+          state = jit_env_step(state, action)
+          rollout.append(make_minimal_state(state))
+        
+      # def step_fn(carry, _):
+      #     state, key = carry
+      #     key, subkey = jax.random.split(key)
+      #     action, _ = policy(state.obs, subkey[None, :])
+      #     state = jit_env_step(state, action)
+      #     minimal_state = make_minimal_state(state)
+      #     return (state, key), minimal_state
+
+      # carry = (state, key)
+      # _, minimal_states = jax.lax.scan(step_fn, carry, None, length=eval_env._max_steps)
+
+      # # prepend initial state
+      # minimal_states = jax.tree_util.tree_map(lambda x: jp.concatenate([jp.expand_dims(make_minimal_state(state).data.qpos, 0), x], axis=0), minimal_states)
+
+      frames = eval_env.render(rollout, height=240, width=320, camera=cam_name)
 
       video_bytes = io.BytesIO()
-      imageio.mimwrite(video_bytes, np.stack(frames, axis=0), format='mp4') #, codec='libx264')
+      imageio.mimwrite(video_bytes, frames, format='mp4') #, codec='libx264')
       video_bytes.seek(0)
 
       wandb.log({"rollout_video": wandb.Video(video_bytes, format="mp4")}, step=num_steps)
