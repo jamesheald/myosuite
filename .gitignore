@@ -126,3 +126,4 @@ osl.log
 *processed.xml
 
 logs/
+myosuite/envs/myo/mjx/wandb/*
