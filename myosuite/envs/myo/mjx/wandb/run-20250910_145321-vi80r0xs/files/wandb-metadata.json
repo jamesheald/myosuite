@@ -1,0 +1,40 @@
+{
+  "os": "Linux-6.11.0-19-generic-x86_64-with-glibc2.39",
+  "python": "CPython 3.13.5",
+  "startedAt": "2025-09-10T13:53:21.352957Z",
+  "program": "/nfs/nhome/live/jheald/myosuite/myosuite/envs/myo/mjx/my_train.py",
+  "codePath": "myosuite/envs/myo/mjx/my_train.py",
+  "codePathLocal": "my_train.py",
+  "git": {
+    "remote": "https://github.com/jamesheald/myosuite.git",
+    "commit": "cf87db7a26cf073818f6e561c914910dda09e070"
+  },
+  "email": "james.heald@ucl.ac.uk",
+  "root": "/nfs/nhome/live/jheald/myosuite/myosuite/envs/myo/mjx",
+  "host": "u434a.id.gatsby.ucl.ac.uk",
+  "executable": "/nfs/nhome/live/jheald/miniconda3/envs/myoarmdm/bin/python",
+  "cpu_count": 16,
+  "cpu_count_logical": 32,
+  "gpu": "NVIDIA RTX 4500 Ada Generation",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "2013991550976",
+      "used": "44383272960"
+    }
+  },
+  "memory": {
+    "total": "134687121408"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA RTX 4500 Ada Generation",
+      "memoryTotal": "25763512320",
+      "cudaCores": 7680,
+      "architecture": "Ada",
+      "uuid": "GPU-6d8158cd-4f22-7ec7-77f6-e69c13986590"
+    }
+  ],
+  "cudaVersion": "12.6",
+  "writerId": "y56svug6q9yi1mn28zrxy6gavzk3di61"
+}

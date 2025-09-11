@@ -4,7 +4,8 @@ from ml_collections import config_dict
 import copy
 from etils import epath
 from jax import numpy as jp
-import myo_registry as registry
+# import myo_registry as registry
+import myosuite.envs.myo.mjx.myo_registry as registry
 from mujoco_playground._src import mjx_env
 import mujoco
 
@@ -39,29 +40,33 @@ reach_env_config = config_dict.create(
     )
 
 ppo_config = config_dict.create(
-        num_timesteps=40_000_000,
-        num_evals=16,
-        reward_scaling=0.1,
-        episode_length=1000,
+        num_timesteps=50_000_000,
+        num_evals=200,
+        reward_scaling=1.,
+        episode_length=150,
         num_eval_envs=128,
         clipping_epsilon=0.3,
         normalize_observations=True,
         action_repeat=1,
         unroll_length=10,
-        num_minibatches=32,
-        num_updates_per_batch=8,
+        num_minibatches=8,
+        num_updates_per_batch=8,#8,5
         num_resets_per_eval=1,
-        discounting=0.97,
+        discounting=0.95,
         learning_rate=3e-4,
         entropy_cost=0.001,
-        num_envs=8192,
-        batch_size=512,
+        num_envs=1024,#1024,8192
+        batch_size=128,#128,1024
         max_grad_norm=1.0,
         network_factory=config_dict.create(
             policy_hidden_layer_sizes=(64, 64, 64),
             value_hidden_layer_sizes=(64, 64, 64),
             policy_obs_key="state",
             value_obs_key="state",
+            # distribution_type='normal', # Literal['normal', 'tanh_normal'] = 'tanh_normal',
+            # noise_std_type='scalar',
+            # init_noise_std=0.2,
+            # state_dependent_std=False,
         )
     )
 
@@ -146,6 +151,7 @@ def make(env_name: str) -> mjx_env.MjxEnv:
                         RFtip=jp.array(((-0.148, -0.543, 1.445), (-0.148, -0.543, 1.445))),
                         LFtip=jp.array(((-0.148, -0.528, 1.434), (-0.148, -0.528, 1.434))),
                     )
+            hand_reach_env_config['ctrl_dt'] = hand_reach_env_config['sim_dt'] * 5.
         elif env_name == "MjxHandReachRandom-v0":
             hand_reach_env_config['far_th'] = 0.034
             hand_reach_env_config['target_reach_range'] = config_dict.create(
@@ -155,6 +161,7 @@ def make(env_name: str) -> mjx_env.MjxEnv:
                         RFtip=jp.array(((-0.148-0.040, -0.543-0.020, 1.445-0.010), (-0.148+0.040, -0.543+0.020, 1.445+0.010))),
                         LFtip=jp.array(((-0.148-0.040, -0.528-0.020, 1.434-0.010), (-0.148+0.040, -0.528+0.020, 1.434+0.010))),
                     )
+            hand_reach_env_config['ctrl_dt'] = hand_reach_env_config['sim_dt'] * 5.
         registry.register_environment(env_name,
                                       MjxReachEnvV0,
                                       config_callable(hand_reach_env_config))

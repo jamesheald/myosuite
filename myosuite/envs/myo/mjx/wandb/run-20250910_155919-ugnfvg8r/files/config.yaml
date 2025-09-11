@@ -1,0 +1,91 @@
+_wandb:
+    value:
+        cli_version: 0.21.3
+        code_path: code/myosuite/envs/myo/mjx/my_train.py
+        e:
+            8c8391j3wsgxgz3i82uhghja41fazrib:
+                codePath: myosuite/envs/myo/mjx/my_train.py
+                codePathLocal: my_train.py
+                cpu_count: 16
+                cpu_count_logical: 32
+                cudaVersion: "12.6"
+                disk:
+                    /:
+                        total: "2013991550976"
+                        used: "44384378880"
+                email: james.heald@ucl.ac.uk
+                executable: /nfs/nhome/live/jheald/miniconda3/envs/myoarmdm/bin/python
+                git:
+                    commit: cf87db7a26cf073818f6e561c914910dda09e070
+                    remote: https://github.com/jamesheald/myosuite.git
+                gpu: NVIDIA RTX 4500 Ada Generation
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ada
+                      cudaCores: 7680
+                      memoryTotal: "25763512320"
+                      name: NVIDIA RTX 4500 Ada Generation
+                      uuid: GPU-6d8158cd-4f22-7ec7-77f6-e69c13986590
+                host: u434a.id.gatsby.ucl.ac.uk
+                memory:
+                    total: "134687121408"
+                os: Linux-6.11.0-19-generic-x86_64-with-glibc2.39
+                program: /nfs/nhome/live/jheald/myosuite/myosuite/envs/myo/mjx/my_train.py
+                python: CPython 3.13.5
+                root: /nfs/nhome/live/jheald/myosuite/myosuite/envs/myo/mjx
+                startedAt: "2025-09-10T14:59:19.973612Z"
+                writerId: 8c8391j3wsgxgz3i82uhghja41fazrib
+        m: []
+        python_version: 3.13.5
+        t:
+            "1":
+                - 1
+                - 12
+                - 45
+            "2":
+                - 1
+                - 12
+                - 45
+            "3":
+                - 16
+                - 61
+            "4": 3.13.5
+            "5": 0.21.3
+            "12": 0.21.3
+            "13": linux-x86_64
+action_repeat:
+    value: 1
+batch_size:
+    value: 128
+clipping_epsilon:
+    value: 0.3
+discounting:
+    value: 0.97
+entropy_cost:
+    value: 0.001
+episode_length:
+    value: 150
+learning_rate:
+    value: 0.0003
+max_grad_norm:
+    value: 1
+normalize_observations:
+    value: true
+num_envs:
+    value: 1024
+num_eval_envs:
+    value: 128
+num_evals:
+    value: 200
+num_minibatches:
+    value: 8
+num_resets_per_eval:
+    value: 1
+num_timesteps:
+    value: 5000000
+num_updates_per_batch:
+    value: 8
+reward_scaling:
+    value: 0.1
+unroll_length:
+    value: 10

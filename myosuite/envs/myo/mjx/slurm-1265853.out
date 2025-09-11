@@ -1,0 +1,183 @@
+Launching a python run
+Thu Sep 11 04:59:48 PM UTC 2025
+Active conda env: /nfs/nhome/live/jheald/miniconda3/envs/myoarmdm
+/nfs/nhome/live/jheald/miniconda3/envs/myoarmdm/bin/python3
+/nfs/nhome/live/jheald/miniconda3/envs/myoarmdm/bin/pip
+2025-09-11 16:59:54.899187: I external/xla/xla/pjrt/pjrt_api.cc:118] GetPjrtApi was found for cuda at /nfs/nhome/live/jheald/miniconda3/envs/myoarmdm/lib/python3.13/site-packages/jax_plugins/xla_cuda12/xla_cuda_plugin.so
+2025-09-11 16:59:54.899390: I external/xla/xla/pjrt/pjrt_api.cc:96] PJRT_Api is set for device type cuda
+2025-09-11 16:59:54.934497: I external/xla/xla/pjrt/pjrt_api.cc:167] The PJRT plugin has PJRT API version 0.75. The framework PJRT API version is 0.75.
+2025-09-11 16:59:55.152954: I external/xla/xla/service/service.cc:163] XLA service 0x5a4f4e52f220 initialized for platform CUDA (this does not guarantee that XLA will be used). Devices:
+2025-09-11 16:59:55.153002: I external/xla/xla/service/service.cc:171]   StreamExecutor device (0): NVIDIA A100-SXM4-40GB, Compute Capability 8.0
+2025-09-11 16:59:55.171004: I external/xla/xla/stream_executor/cuda/cuda_dnn.cc:473] Loaded cuDNN version 91002
+2025-09-11 16:59:55.171221: I external/xla/xla/pjrt/pjrt_c_api_client.cc:133] PjRtCApiClient created.
+Current backend: gpu
+MyoSuite:> Registering Myo Envs
+Warp 1.10.0.dev20250903 initialized:
+   Git commit: 531f4e35cc5e5a524559a2350adf50184dd6d289
+   CUDA Toolkit 12.8, Driver 12.9
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA A100-SXM4-40GB" (39 GiB, sm_80, mempool enabled)
+   Kernel cache:
+     /nfs/nhome/live/jheald/.cache/warp/1.10.0.dev20250903
+Training on environment:
+MjxHandReachRandom-v0
+Environment Config:
+ctrl_dt: 0.01
+far_th: 0.034
+model_path: !!python/object/apply:etils.epath.gpath.PosixGPath
+- /nfs/nhome/live/jheald/myosuite/myosuite
+- envs/myo/assets/hand/
+- myohand_pose.xml
+reward_weights:
+  bonus: 4.0
+  penalty: 50.0
+  reach: 1.0
+sim_dt: 0.002
+target_reach_range:
+  IFtip: !!python/object/apply:jax._src.array._reconstruct_array
+  - &id001 !!python/name:numpy._core.multiarray._reconstruct ''
+  - !!python/tuple
+    - &id002 !!python/name:numpy.ndarray ''
+    - !!python/tuple
+      - 0
+    - !!binary |
+      Yg==
+  - !!python/tuple
+    - 1
+    - !!python/tuple
+      - 2
+      - 3
+    - &id003 !!python/object/apply:numpy.dtype
+      args:
+      - f4
+      - false
+      - true
+      state: !!python/tuple
+      - 3
+      - <
+      - null
+      - null
+      - null
+      - -1
+      - -1
+      - 0
+    - false
+    - !!binary |
+      gZVDvukmEb/D9bg/+FPjvXnpBr8fhbs/
+  - weak_type: false
+  LFtip: !!python/object/apply:jax._src.array._reconstruct_array
+  - *id001
+  - !!python/tuple
+    - *id002
+    - !!python/tuple
+      - 0
+    - !!binary |
+      Yg==
+  - !!python/tuple
+    - 1
+    - !!python/tuple
+      - 2
+      - 3
+    - *id003
+    - false
+    - !!binary |
+      EoNAvrpJDL+iRbY/Gy/dvUoMAr/+1Lg/
+  - weak_type: false
+  MFtip: !!python/object/apply:jax._src.array._reconstruct_array
+  - *id001
+  - !!python/tuple
+    - *id002
+    - !!python/tuple
+      - 0
+    - !!binary |
+      Yg==
+  - !!python/tuple
+    - 1
+    - !!python/tuple
+      - 2
+      - 3
+    - *id003
+    - false
+    - !!binary |
+      yXY+vukmEb+e77c/hxbZvXnpBr/6fro/
+  - weak_type: false
+  RFtip: !!python/object/apply:jax._src.array._reconstruct_array
+  - *id001
+  - !!python/tuple
+    - *id002
+    - !!python/tuple
+      - 0
+    - !!binary |
+      Yg==
+  - !!python/tuple
+    - 1
+    - !!python/tuple
+      - 2
+      - 3
+    - *id003
+    - false
+    - !!binary |
+      EoNAvsUgEL8Urrc/Gy/dvVTjBb9xPbo/
+  - weak_type: false
+  THtip: !!python/object/apply:jax._src.array._reconstruct_array
+  - *id001
+  - !!python/tuple
+    - *id002
+    - !!python/tuple
+      - 0
+    - !!binary |
+      Yg==
+  - !!python/tuple
+    - 1
+    - !!python/tuple
+      - 2
+      - 3
+    - *id003
+    - false
+    - !!binary |
+      pHA9vka2E79xPbo/AAAAvh1aBL/hesQ/
+  - weak_type: false
+
+PPO Training Parameters:
+action_repeat: 1
+batch_size: 128
+clipping_epsilon: 0.3
+discounting: 0.95
+entropy_cost: 0.001
+episode_length: 150
+learning_rate: 0.0003
+max_grad_norm: 1.0
+network_factory:
+  policy_hidden_layer_sizes: &id001 !!python/tuple
+  - 64
+  - 64
+  - 64
+  policy_obs_key: state
+  value_hidden_layer_sizes: *id001
+  value_obs_key: state
+normalize_observations: true
+num_envs: 1024
+num_eval_envs: 128
+num_evals: 200
+num_minibatches: 8
+num_resets_per_eval: 1
+num_timesteps: 50000000
+num_updates_per_batch: 8
+reward_scaling: 1.0
+unroll_length: 10
+
+wandb: Currently logged in as: james-heald (james-gatsby) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.21.3
+wandb: Run data is saved locally in /nfs/nhome/live/jheald/myosuite/myosuite/envs/myo/mjx/wandb/run-20250911_170012-ln5ys6jq
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run visionary-butterfly-5
+wandb: ⭐️ View project at https://wandb.ai/james-gatsby/MjxHandReachRandom-v0
+wandb: 🚀 View run at https://wandb.ai/james-gatsby/MjxHandReachRandom-v0/runs/ln5ys6jq
+Module mujoco.mjx.third_party.mujoco_warp._src.smooth 70ca803 load on device 'cuda:0' took 56.65 ms  (cached)
+Module mujoco.mjx.third_party.mujoco_warp._src.collision_driver 685d542 load on device 'cuda:0' took 8.17 ms  (cached)
+Module mujoco.mjx.third_party.mujoco_warp._src.collision_driver._nxn_broadphase c2383b2 load on device 'cuda:0' took 7.72 ms  (cached)
+Module mujoco.mjx.third_party.mujoco_warp._src.collision_convex.ccd_kernel_builder e37fe54 load on device 'cuda:0' took 14.65 ms  (cached)
+Module mujoco.mjx.third_party.mujoco_warp._src.collision_convex.ccd_kernel_builder b3c7ec9 load on device 'cuda:0' took 18348.84 ms  (compiled)
+Module mujoco.mjx.third_party.mujoco_warp._src.collision_convex.ccd_kernel_builder 87be61f load on device 'cuda:0' took 24124.70 ms  (compiled)
+slurmstepd-gpu-sr670-23: error: *** JOB 1265853 ON gpu-sr670-23 CANCELLED AT 2025-09-11T17:01:30 ***

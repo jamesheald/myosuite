@@ -1,0 +1,128 @@
+_wandb:
+    value:
+        cli_version: 0.21.3
+        code_path: code/myosuite/envs/myo/mjx/my_train.py
+        e:
+            y8ks9dby1egxrk59j3i4u8n7uehb1flz:
+                codePath: myosuite/envs/myo/mjx/my_train.py
+                codePathLocal: my_train.py
+                cpu_count: 20
+                cpu_count_logical: 40
+                cudaVersion: "12.9"
+                disk:
+                    /:
+                        total: "982790172672"
+                        used: "19108868096"
+                email: james.heald@ucl.ac.uk
+                executable: /nfs/nhome/live/jheald/miniconda3/envs/myoarmdm/bin/python3
+                git:
+                    commit: cf87db7a26cf073818f6e561c914910dda09e070
+                    remote: https://github.com/jamesheald/myosuite.git
+                gpu: NVIDIA RTX A4500
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 7168
+                      memoryTotal: "21464350720"
+                      name: NVIDIA RTX A4500
+                      uuid: GPU-509a3d67-c37c-a1ef-0aae-995004b64125
+                host: gpu-350-03
+                memory:
+                    total: "405604978688"
+                os: Linux-6.8.0-55-generic-x86_64-with-glibc2.39
+                program: /nfs/nhome/live/jheald/myosuite/myosuite/envs/myo/mjx/my_train.py
+                python: CPython 3.13.5
+                root: /nfs/nhome/live/jheald/myosuite/myosuite/envs/myo/mjx
+                slurm:
+                    cluster_name: (null)
+                    conf: /etc/slurm/slurm.conf
+                    cpus_on_node: "2"
+                    gpus_on_node: "1"
+                    gtids: "0"
+                    job_account: gcnu-ac
+                    job_cpus_per_node: "2"
+                    job_end_time: "1757866895"
+                    job_gid: "801151180"
+                    job_gpus: "1"
+                    job_id: "1265833"
+                    job_name: myoarmdm
+                    job_nodelist: gpu-350-03
+                    job_num_nodes: "1"
+                    job_partition: gpu
+                    job_qos: normal
+                    job_start_time: "1757607695"
+                    job_uid: "801151180"
+                    job_user: jheald
+                    jobid: "1265833"
+                    localid: "0"
+                    mem_per_node: "61440"
+                    nnodes: "1"
+                    nodeid: "0"
+                    nodelist: gpu-350-03
+                    nprocs: "1"
+                    ntasks: "1"
+                    ntasks_per_node: "1"
+                    prio_process: "0"
+                    procid: "0"
+                    submit_dir: /nfs/nhome/live/jheald/myosuite/myosuite/envs/myo/mjx
+                    submit_host: u434a.id.gatsby.ucl.ac.uk
+                    task_pid: "2036409"
+                    tasks_per_node: "1"
+                    topology_addr: gpu-350-03
+                    topology_addr_pattern: node
+                startedAt: "2025-09-11T16:21:56.599220Z"
+                writerId: y8ks9dby1egxrk59j3i4u8n7uehb1flz
+        m: []
+        python_version: 3.13.5
+        t:
+            "1":
+                - 1
+                - 12
+                - 45
+            "2":
+                - 1
+                - 12
+                - 45
+            "3":
+                - 16
+                - 61
+            "4": 3.13.5
+            "5": 0.21.3
+            "12": 0.21.3
+            "13": linux-x86_64
+action_repeat:
+    value: 1
+batch_size:
+    value: 128
+clipping_epsilon:
+    value: 0.3
+discounting:
+    value: 0.95
+entropy_cost:
+    value: 0.001
+episode_length:
+    value: 150
+learning_rate:
+    value: 0.0003
+max_grad_norm:
+    value: 1
+normalize_observations:
+    value: true
+num_envs:
+    value: 1024
+num_eval_envs:
+    value: 128
+num_evals:
+    value: 200
+num_minibatches:
+    value: 8
+num_resets_per_eval:
+    value: 1
+num_timesteps:
+    value: 50000000
+num_updates_per_batch:
+    value: 8
+reward_scaling:
+    value: 1
+unroll_length:
+    value: 10
