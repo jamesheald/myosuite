@@ -43,6 +43,8 @@ def main(env_name):
   ppo_params['policy_params_fn'] = make_policy_params_fn(env)
   ppo_params['episode_length'] = env._max_steps
 
+  breakpoint()
+
   # Train the model
   make_inference_fn, params, _ = ppo.train(
       environment=env,
@@ -82,10 +84,11 @@ times = [time.monotonic()]
 # Progress function for logging
 def progress(num_steps, metrics):
   times.append(time.monotonic())
-  print(f"Step {num_steps} at {times[-1]}: reward={metrics['eval/episode_reward']:.3f}")
+  # print(f"Step {num_steps} at {times[-1]}: reward={metrics['eval/episode_reward']:.3f}")
+  print(f"Step {num_steps:_} at {(times[-1] - times[0]) / 60:.2f} minutes. Reward={metrics['eval/episode_reward']:.3f}")
   wandb.log(metrics, step=num_steps)
 
 
 if __name__ == "__main__":
-  main("MjxHandReachRandom-v0")
+  main("MjxHandReachFixed-v0")
   # main("MjxElbowPoseRandom-v0")

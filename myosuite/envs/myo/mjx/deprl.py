@@ -8,8 +8,32 @@ import time
 from flax.training.train_state import TrainState
 import optax
 import flax.linen as nn
+from flax.training import orbax_utils
+import orbax
 
 import wandb
+from mujoco_playground import wrapper
+from ml_collections import config_dict
+from flax import linen
+import functools
+
+from typing import NamedTuple
+from brax.training.acme.types import NestedArray
+class Transition(NamedTuple):
+  """Container for a transition."""
+  observation: NestedArray
+  action: NestedArray
+  next_observation: NestedArray
+  extras: NestedArray = ()  # pytype: disable=annotation-type-mismatch  # jax-ndarray
+from brax.training import replay_buffers
+
+import distrax
+from flax.linen.initializers import zeros_init, ones_init, normal, orthogonal, constant
+
+from myosuite.envs.myo.mjx.BRAX_PPO import ppo_networks as objex_ppo_networks
+from myosuite.envs.myo.mjx.BRAX_PPO import train as objex_ppo
+
+import os
 
 @struct.dataclass
 class DEPParams:
@@ -139,6 +163,7 @@ def _compute_action_from_C(dep: DEPState) -> jnp.ndarray:
     qnorm = _q_norm(q, dep.params.regularization)
     q = q * qnorm
     y = jnp.tanh(q * dep.params.kappa + dep.Cb)
+    # y = 1.0/(1.0+jnp.exp(-5.0*((q * dep.params.kappa + dep.Cb)-0.5))) 
     return y * dep.act_scale
 
 def learn_controller(dep: DEPState, tau: int) -> DEPState:
@@ -222,344 +247,587 @@ def dep_step(dep: DEPState, env_state: Any, tau: int) -> Tuple[DEPState, jnp.nda
 def main(env_name):
   """Run training and evaluation for the specified environment."""
 
-  wandb_run = wandb.init(project='deprl_' + env_name,)
+  env = make(env_name)
+  mjx_model = env.mjx_model
+
+  # from brax.training.agents.ppo import networks as ppo_networks
+  # from brax.training.agents.ppo import train as ppo
+
+  # wandb_run = wandb.init(project='nodeprl_' + env_name)
+          
+  # ppo_config = config_dict.create(
+  #   num_timesteps=50_000_000,
+  #   num_envs=1024,
+  #   batch_size=128,
+  #   num_minibatches=8,
+  #   unroll_length=10,
+  #   num_updates_per_batch=8,
+  #   num_resets_per_eval=1,
+  #   num_evals=50,
+  #   num_eval_envs=128,
+  #   reward_scaling=1,
+  #   episode_length=100,
+  #   clipping_epsilon=0.3,
+  #   normalize_observations=False,
+  #   action_repeat=1,
+  #   discounting=0.95,
+  #   gae_lambda=0.95,
+  #   normalize_advantage=True,
+  #   learning_rate=1e-4,
+  #   entropy_cost=0.001,
+  #   max_grad_norm=0.5,
+  #   # policy_params_fn=policy_params_fn,
+  #   # save_checkpoint_path=save_path,
+  #   # restore_checkpoint_path='/nfs/nhome/live/jheald/myo_mimic/brax_outputs/000003686400',
+  #   network_factory=config_dict.create(
+  #       # action_size=mjx_model.nv,
+  #       policy_hidden_layer_sizes=(256,128),
+  #       value_hidden_layer_sizes=(256,128),
+  #       activation=linen.swish,
+  #       policy_obs_key="state",
+  #       value_obs_key="state",
+  #       distribution_type='normal', # Literal['normal', 'tanh_normal'] = 'tanh_normal',
+  #       noise_std_type='scalar',
+  #       init_noise_std=1.,
+  #       state_dependent_std=False,
+  #   )
+  # )
+  
+  # times = [time.monotonic()]
+  # def progress(num_steps, metrics):
+  #     times.append(time.monotonic())
+  #     print(f"Step {num_steps:_} at {(times[-1] - times[0]) / 60:.2f} minutes")
+  #     wandb.log(metrics, step=num_steps)
+
+  # ppo_params = dict(ppo_config)
+  # network_factory = functools.partial(
+  #     ppo_networks.make_ppo_networks, **ppo_params.pop("network_factory")
+  # )
+  # # Train the model
+  # make_inference_fn, params, _ = ppo.train(
+  #     environment=env,
+  #     progress_fn=progress,
+  #     network_factory=network_factory,
+  #     wrap_env_fn=wrapper.wrap_for_brax_training,
+  #     num_eval_envs=ppo_params.pop("num_eval_envs"),
+  #     **ppo_params,
+  # )
+
+  # wandb.finish()
+
+  # breakpoint()
+
+  wandb_run = wandb.init(project='deprl_' + env_name)
+  save_dir = os.path.join('/nfs/nhome/live/jheald/myosuite/myosuite/envs/myo/mjx/checkpoint/', wandb_run.id)
 
   key = jax.random.PRNGKey(0)
   key, subkey = jax.random.split(key)
 
-  env = make(env_name)
-
   n_env = 1_024
   n_steps_per_env = 1_000
-  h_dims_dynamics = [256,256]
+  h_dims_dynamics = [256, 256]
   drop_out_rates=[0.1, 0.1]
   max_grad_norm = 0.5
   dynamics_learning_rate = 1e-4
-  n_epochs_dynamics = 50_000
+  n_epochs_dynamics = 500_000
   h_dims_conditioner = 256
   num_bijector_params = 2
   num_coupling_layers = 4
   precoder_learning_rate = 1e-4
-  n_epochs_precoder = 50_000
-  tau = 0.1    # NOT USED YET Temperature for InfoNCE, could try 0.5 or 2. times std by square root tau
+  n_epochs_precoder = 500_000
+  tau = 1.    # NOT USED YET; Temperature for InfoNCE, could try 0.5 or 2. times std by square root tau
   z_std = 1.   # NOT USED YET
 
-  # Initialize batched environments
-  mjx_model = env.mjx_model
-  env_states = jax.vmap(lambda key: env.reset(key))(jax.random.split(subkey, n_env))
-  dep_states = jax.vmap(dep_init, in_axes=(None, 0))(mjx_model, jnp.linspace(0.01, 1, n_env))
+  def get_mean_and_std(x):
+    x_mean = jnp.mean(x, axis=0)
+    x_std = jnp.std(x, axis=0)
+    return x_mean, x_std
 
-  tau_static = int(dep_states.params.tau[0]) # assuming all environments use the same tau
-  dep_step_jit = jax.jit(jax.vmap(dep_step, in_axes=(0, 0, None)), static_argnums=2)
+  train_from_scratch = True
+  if train_from_scratch:
 
-  from typing import NamedTuple
-  from brax.training.acme.types import NestedArray
-  class Transition(NamedTuple):
-    """Container for a transition."""
-    observation: NestedArray
-    action: NestedArray
-    next_observation: NestedArray
-    extras: NestedArray = ()  # pytype: disable=annotation-type-mismatch  # jax-ndarray
-  from brax.training import replay_buffers
-  
-  dummy_obs = jnp.zeros((env_states.obs['state'].shape[-1],))
-  dummy_action = jnp.zeros((mjx_model.nu,))
-  dummy_transition = Transition(  # pytype: disable=wrong-arg-types  # jax-ndarray
-      observation=dummy_obs,
-      action=dummy_action,
-      next_observation=dummy_obs,
-      extras={'state_extras': {'truncation': 0.0}, 'policy_extras': {}},
-  )
-
-  replay_buffer = replay_buffers.UniformSamplingQueue(
-      max_replay_size=n_env * n_steps_per_env,
-      dummy_data_sample=dummy_transition,
-      sample_batch_size=n_env,
-  )
-  key, subkey = jax.random.split(key)
-  buffer_state = replay_buffer.init(subkey)
-
-  def rollout(dep_state, env_state, buffer_state, num_steps):
-    
-    def step_env(carry, _):
-        dep_s, env_s, buffer_state = carry
-        obs = env_s.obs.copy()
-        dep_s, action = dep_step_jit(dep_s, env_s, tau_static)       # dep_s, action: both (n_env, ...)
-        env_s = jax.vmap(env.step)(env_s, action)    # vectorized env step over n_env
-        transitions = Transition(  # pytype: disable=wrong-arg-types  # jax-ndarray
-            observation=obs,
-            action=action,
-            next_observation=env_s.obs,
-            extras={},
-        )
-        buffer_state = replay_buffer.insert(buffer_state, transitions)
-        return (dep_s, env_s, buffer_state), None
-
-    (dep_state, env_state, buffer_state), _ = jax.lax.scan(
-        step_env,
-        (dep_state, env_state, buffer_state),
-        xs=None,
-        length=num_steps,
+    # Initialize batched environments
+    env_states = jax.vmap(lambda key: env.reset(key))(jax.random.split(subkey, n_env))
+    qpos = jax.random.uniform(subkey,
+                              (n_env, mjx_model.nq),
+                              minval=mjx_model.jnt_range[:,0],
+                              maxval=mjx_model.jnt_range[:,1]
     )
-    return dep_state, env_state, buffer_state
+    key, subkey = jax.random.split(key)
+    qvel = jax.random.normal(subkey, shape=(n_env, env.mjx_model.nv)) * jnp.sqrt(0.03)
+    env_states = env_states.replace(data=env_states.data.replace(qpos=qpos))
+    env_states = env_states.replace(data=env_states.data.replace(qvel=qvel))
 
-  rollout_jit = jax.jit(rollout, static_argnums=3)
+    # dep_states = jax.vmap(dep_init, in_axes=(None, 0))(mjx_model, jnp.linspace(0.01, 1, n_env))
+    dep_states = jax.vmap(dep_init, in_axes=(None, 0))(mjx_model, jnp.ones(n_env))
+    tau_static = int(dep_states.params.tau[0]) # assuming all environments use the same tau
+    dep_step_jit = jax.jit(jax.vmap(dep_step, in_axes=(0, 0, None)), static_argnums=2)
+    
+    dummy_obs = jnp.zeros((env_states.obs['state'].shape[-1],))
+    dummy_action = jnp.zeros((mjx_model.nu,))
+    dummy_transition = Transition(  # pytype: disable=wrong-arg-types  # jax-ndarray
+        observation=dummy_obs,
+        action=dummy_action,
+        next_observation=dummy_obs,
+        # extras={'state_extras': {'truncation': 0.0}, 'policy_extras': {}},
+    )
 
-  # Run rollout
-  t0 = time.time()
-  dep_states, env_states, buffer_state = rollout_jit(dep_states, env_states, buffer_state, n_steps_per_env)
-  t1 = time.time()
+    replay_buffer = replay_buffers.UniformSamplingQueue(
+        max_replay_size=n_env * n_steps_per_env,
+        dummy_data_sample=dummy_transition,
+        sample_batch_size=n_env,
+    )
+    key, subkey = jax.random.split(key)
+    buffer_state = replay_buffer.init(subkey)
 
-  print(f"Scan rollout ({n_env * n_steps_per_env} steps) took {t1 - t0:.4f} seconds")
+    def rollout(dep_state, env_state, buffer_state, num_steps):
+      
+      def step_env(carry, _):
+          dep_s, env_s, buffer_state, step = carry
 
-  # _, action = dep_step_jit(dep_states, env_states, tau_static)
+          # Reset condition: every 50 steps
+          def do_reset(carry):
+            dep_s, env_s, buffer_state, step = carry
+            key = jax.random.PRNGKey(step)  # or pass in a rng stream properly
 
-  # reset dep and env with noise!
+            # Reset environments
+            key, subkey = jax.random.split(key)
+            qpos = jax.random.uniform(subkey,
+                              (n_env, mjx_model.nq),
+                              minval=mjx_model.jnt_range[:,0],
+                              maxval=mjx_model.jnt_range[:,1]
+            )
+            key, subkey = jax.random.split(key)
+            qvel = jax.random.normal(subkey, shape=(n_env, env.mjx_model.nv)) * jnp.sqrt(0.03)
+            env_s = env_s.replace(data=env_s.data.replace(qpos=qpos))
+            env_s = env_s.replace(data=env_s.data.replace(qvel=qvel))
 
-  class DynamicsNet(nn.Module):
-    h_dims_dynamics: List
-    num_control_variables: int
-    drop_out_rates: List
+            # Reset DEP agents
+            # dep_s = jax.vmap(dep_init, in_axes=(None, 0))(mjx_model, jnp.ones(n_env))
+            # dep_s = jax.vmap(dep_init, in_axes=(None, 0))(mjx_model, jnp.linspace(0.01, 1, n_env))
 
-    def setup(self):
+            return (dep_s, env_s, buffer_state, step)
 
-        self.dynamics = [nn.Sequential([nn.Dense(features=h_dim), nn.LayerNorm(), nn.relu]) for h_dim in self.h_dims_dynamics]
-        self.dynamics_out = nn.Dense(features=self.num_control_variables*2)
+          def no_reset(carry):
+            return carry
 
-        self.dropout = [nn.Dropout(rate=drop_out_rate) for drop_out_rate in self.drop_out_rates]
+          carry = jax.lax.cond(
+            step % 200 == 0,
+            do_reset,
+            no_reset,
+            carry,
+          )
 
-    def __call__(self, obs, action, key, deterministic=False):
+          dep_s, env_s, buffer_state, step = carry
 
-      def get_log_var(x):
-        """
-        sigma = log(1 + exp(x))
-        """
-        sigma = nn.softplus(x) + 1e-6
-        log_var = 2 * jnp.log(sigma)
-        return log_var
+          obs = env_s.obs['precoder'].copy()
+          dep_s, action = dep_step_jit(dep_s, env_s, tau_static)       # dep_s, action: both (n_env, ...)
+          env_s = jax.vmap(env.step)(env_s, action)    # vectorized env step over n_env
+          transitions = Transition(  # pytype: disable=wrong-arg-types  # jax-ndarray
+              observation=obs,
+              action=action,
+              next_observation=env_s.obs['precoder'],
+              extras={},
+          )
+          buffer_state = replay_buffer.insert(buffer_state, transitions)
+          return (dep_s, env_s, buffer_state, step + 1), None
+      
+      step = jnp.array(0, dtype=jnp.int32)
 
-      x = jnp.concatenate((obs, action), axis=-1)       
-      for fn, dropout in zip(self.dynamics, self.dropout):
-          x = fn(x)
-          key, subkey = jax.random.split(key)
-          x = dropout(x, deterministic, subkey)
+      (dep_state, env_state, buffer_state, _), _ = jax.lax.scan(
+          step_env,
+          (dep_state, env_state, buffer_state, step),
+          xs=None,
+          length=num_steps,
+      )
+      return dep_state, env_state, buffer_state
 
-      x = self.dynamics_out(x)
+    rollout_jit = jax.jit(rollout, static_argnums=3)
 
-      y_prime_mean, y_prime_scale = jnp.split(x, 2, axis=-1)
-      y_prime_log_var = get_log_var(y_prime_scale)
+    # Run rollout
+    t0 = time.time()
+    dep_states, env_states, buffer_state = rollout_jit(dep_states, env_states, buffer_state, n_steps_per_env)
+    t1 = time.time()
 
-      # fixed_log_sigma = jnp.log(1.)  # Fixed log_sigma, independent of a
-      # return mu, fixed_log_sigma * jnp.ones_like(mu)  # Broadcast to [batch]
+    flat_data = buffer_state.data
+    unflattened = replay_buffer._unflatten_fn(flat_data)
 
-      return y_prime_mean, y_prime_log_var
+    obs_mean, obs_std = get_mean_and_std(unflattened.observation)
+    action_mean, action_std = get_mean_and_std(unflattened.action)
+    delta_obs_mean, delta_obs_std = get_mean_and_std(unflattened.next_observation - unflattened.observation)
 
+    print(f"Scan rollout ({n_env * n_steps_per_env} steps) took {t1 - t0:.4f} seconds")
 
-  dynamics = DynamicsNet(h_dims_dynamics=h_dims_dynamics,
-                        num_control_variables=mjx_model.nv,
-                        drop_out_rates=drop_out_rates)
-  
-  key, subkey = jax.random.split(key)
+    # _, action = dep_step_jit(dep_states, env_states, tau_static)
 
-  dynamics_state = TrainState.create(
-      apply_fn=dynamics.apply,
-      params=dynamics.init(subkey, dummy_obs, dummy_action, subkey, False),
-      tx=
-      optax.chain(
-          optax.clip_by_global_norm(max_grad_norm),
-          optax.adam(learning_rate=dynamics_learning_rate),
-      ),
-  )
+    class DynamicsNet(nn.Module):
+      h_dims_dynamics: List
+      num_control_variables: int
+      drop_out_rates: List
 
-  def dynamics_update(dynamics_state, buffer_state, key):
+      def setup(self):
 
-    def dynamics_loss_fn(params, key, observations, actions, next_observations):
-      def log_likelihood_diagonal_Gaussian(x, mu, log_var):
+          self.dynamics = [nn.Sequential([nn.Dense(features=h_dim), nn.LayerNorm(), nn.relu]) for h_dim in self.h_dims_dynamics]
+          self.dynamics_out = nn.Dense(features=self.num_control_variables*2)
+
+          self.dropout = [nn.Dropout(rate=drop_out_rate) for drop_out_rate in self.drop_out_rates]
+
+      def __call__(self, obs, action, key, deterministic=False):
+
+        def get_log_var(x):
           """
-          Calculate the log likelihood of x under a diagonal Gaussian distribution
-          var_min is added to the variances for numerical stability
+          sigma = log(1 + exp(x))
           """
-          log_likelihood = -0.5 * (log_var + jnp.log(2 * jnp.pi) + (x - mu) ** 2 / jnp.exp(log_var))
-          return log_likelihood
-          # return -(x - mu) ** 2
-      y_prime_mean, y_prime_log_var = dynamics_state.apply_fn(params, observations, actions, key, deterministic=False)
-      delta_obs = next_observations-observations
-      dynamics_loss = -log_likelihood_diagonal_Gaussian(delta_obs[:, :mjx_model.nv], y_prime_mean, y_prime_log_var)
-      return dynamics_loss.mean()
+          sigma = nn.softplus(x) + 1e-6
+          log_var = 2 * jnp.log(sigma)
+          return log_var
 
+        x = jnp.concatenate((obs, action), axis=-1)       
+        for fn, dropout in zip(self.dynamics, self.dropout):
+            x = fn(x)
+            key, subkey = jax.random.split(key)
+            x = dropout(x, deterministic, subkey)
+
+        x = self.dynamics_out(x)
+
+        y_prime_mean, y_prime_scale = jnp.split(x, 2, axis=-1)
+        y_prime_log_var = get_log_var(y_prime_scale)
+
+        # fixed_log_sigma = jnp.log(1.)  # Fixed log_sigma, independent of a
+        # return mu, fixed_log_sigma * jnp.ones_like(mu)  # Broadcast to [batch]
+
+        return y_prime_mean, y_prime_log_var
+
+    class BijectorNet(nn.Module):
+      h_dims_conditioner: int
+      num_bijector_params: int
+      num_coupling_layers: int
+      a_dim: int
+
+      def setup(self):
+
+        # final linear layer of each conditioner initialised to zero so that the flow is initialised to the identity function
+        self.conditioners = [nn.Sequential([nn.Dense(features=self.h_dims_conditioner), nn.relu,\
+                                            nn.Dense(features=self.h_dims_conditioner), nn.relu,\
+                                            nn.Dense(features=self.num_bijector_params*self.a_dim, bias_init=constant(jnp.log(jnp.exp(1.)-1.)), kernel_init=zeros_init())])
+                              for layer_i in range(self.num_coupling_layers)]
+          
+      def __call__(self, obs):
+
+        def make_bijector(obs):
+        
+          mask = jnp.arange(self.a_dim) % 2 # every second element is masked
+          mask = mask.astype(bool)
+
+          def bijector_fn(params):
+              shift, arg_soft_plus = jnp.split(params, 2, axis=-1)
+              return distrax.ScalarAffine(shift=shift-jnp.log(jnp.exp(1.)-1.), scale=jax.nn.softplus(arg_soft_plus)+1e-3)
+      
+          layers = []
+          for layer_i in range(self.num_coupling_layers):
+              # Conditioner now concatenates input x with state
+              conditioner = lambda x: self.conditioners[layer_i](jnp.concat([x, obs], axis=-1))
+              layer = distrax.MaskedCoupling(mask=mask, bijector=bijector_fn, conditioner=conditioner)
+              # layer = distrax.MaskedCoupling(mask=mask, bijector=bijector_fn, conditioner=self.conditioners[layer_i])
+              layers.append(layer)
+              mask = jnp.logical_not(mask) # flip mask after each layer
+          
+          return distrax.Chain(layers)
+
+        return make_bijector(obs)
+      
+    class PrecoderNet(nn.Module):
+      h_dims_conditioner: int
+      num_bijector_params: int
+      num_coupling_layers: int
+      a_dim: int
+      def setup(self):
+          
+        self.bijector = BijectorNet(h_dims_conditioner=self.h_dims_conditioner,
+                                num_bijector_params=self.num_bijector_params,
+                                num_coupling_layers=self.num_coupling_layers,
+                                a_dim=self.a_dim)
+      def __call__(self, z, observations):
+          
+          # create state-dependent bijector
+          bijector = self.bijector(observations)
+
+          # pad z with zeros so input and output space have same dimensionality
+          z_with_zeros = jnp.concatenate((z, jnp.zeros(z.shape[:-1] + (self.a_dim-z.shape[-1],))), axis=-1)
+          
+          # map z to a
+          a = nn.tanh(bijector.forward(z_with_zeros))
+          return a
+
+    dynamics = DynamicsNet(h_dims_dynamics=h_dims_dynamics,
+                           num_control_variables=mjx_model.nv,
+                           drop_out_rates=drop_out_rates)
+    
     key, subkey = jax.random.split(key)
 
-    buffer_state, transitions = replay_buffer.sample(buffer_state)
-    observations = transitions.observation
-    actions = transitions.action
-    next_observations = transitions.next_observation
+    dynamics_state = TrainState.create(
+        apply_fn=dynamics.apply,
+        params=dynamics.init(subkey, dummy_obs, dummy_action, subkey, False),
+        tx=
+        optax.chain(
+            optax.clip_by_global_norm(max_grad_norm),
+            optax.adam(learning_rate=dynamics_learning_rate),
+        ),
+    )
 
-    dynamics_loss, grads = jax.value_and_grad(dynamics_loss_fn, has_aux=False)(dynamics_state.params, subkey, observations, actions, next_observations)
-    dynamics_state = dynamics_state.apply_gradients(grads=grads)
+    def dynamics_update(dynamics_state, observations, actions, delta_obs, key):
 
-    return dynamics_state, dynamics_loss
-  
-  jit_dynamics_update = jax.jit(dynamics_update)
-
-  # Training loop
-  for epoch in range(n_epochs_dynamics):
+      def dynamics_loss_fn(params, dynamics_state, key, observations, actions, delta_obs):
+        def log_likelihood_diagonal_Gaussian(x, mu, log_var):
+            """
+            Calculate the log likelihood of x under a diagonal Gaussian distribution
+            var_min is added to the variances for numerical stability
+            """
+            log_likelihood = -0.5 * (log_var + jnp.log(2 * jnp.pi) + (x - mu) ** 2 / jnp.exp(log_var))
+            return log_likelihood
+            # return -(x - mu) ** 2
+        y_prime_mean, y_prime_log_var = dynamics_state.apply_fn(params, observations, actions, key, deterministic=False)
+        dynamics_loss = -log_likelihood_diagonal_Gaussian(delta_obs[:, :mjx_model.nv], y_prime_mean, y_prime_log_var)
+        return dynamics_loss.mean()
 
       key, subkey = jax.random.split(key)
-      dynamics_state, dynamics_loss = jit_dynamics_update(dynamics_state, buffer_state, subkey)
-      
-      if epoch % 1_000 == 0:
-          wandb.log({'dynamics_loss': dynamics_loss}, step=epoch)
-          print(f"Step {epoch}, Dynamics loss: {dynamics_loss:.4f}")
 
-  print("Dynamics training complete.")
+      dynamics_loss, grads = jax.value_and_grad(dynamics_loss_fn, has_aux=False)(dynamics_state.params, dynamics_state, subkey, observations, actions, delta_obs)
+      dynamics_state = dynamics_state.apply_gradients(grads=grads)
 
-  import distrax
-  from flax.linen.initializers import zeros_init, ones_init, normal, orthogonal, constant
-
-  class BijectorNet(nn.Module):
-    h_dims_conditioner: int
-    num_bijector_params: int
-    num_coupling_layers: int
-    a_dim: int
-
-    def setup(self):
-
-      # final linear layer of each conditioner initialised to zero so that the flow is initialised to the identity function
-      self.conditioners = [nn.Sequential([nn.Dense(features=self.h_dims_conditioner), nn.relu,\
-                                          nn.Dense(features=self.h_dims_conditioner), nn.relu,\
-                                          nn.Dense(features=self.num_bijector_params*self.a_dim, bias_init=constant(jnp.log(jnp.exp(1.)-1.)), kernel_init=zeros_init())])
-                            for layer_i in range(self.num_coupling_layers)]
-        
-    def __call__(self, obs):
-
-      def make_bijector():
-      
-        mask = jnp.arange(self.a_dim) % 2 # every second element is masked
-        mask = mask.astype(bool)
-
-        def bijector_fn(params):
-            shift, arg_soft_plus = jnp.split(params, 2, axis=-1)
-            return distrax.ScalarAffine(shift=shift-jnp.log(jnp.exp(1.)-1.), scale=jax.nn.softplus(arg_soft_plus)+1e-3)
+      return dynamics_state, dynamics_loss
     
-        layers = []
-        for layer_i in range(self.num_coupling_layers):
-            # Conditioner now concatenates input x with state
-            conditioner = lambda x: self.conditioners[layer_i](jnp.concat([x, obs], axis=-1))
-            layer = distrax.MaskedCoupling(mask=mask, bijector=bijector_fn, conditioner=conditioner)
-            # layer = distrax.MaskedCoupling(mask=mask, bijector=bijector_fn, conditioner=self.conditioners[layer_i])
-            layers.append(layer)
-            mask = jnp.logical_not(mask) # flip mask after each layer
-        
-        return distrax.Chain(layers)
+    jit_dynamics_update = jax.jit(dynamics_update)
 
-      return make_bijector()
+    # Training loop
+    for epoch in range(n_epochs_dynamics):
+        
+        buffer_state, transitions = replay_buffer.sample(buffer_state)
+        observations = (transitions.observation - obs_mean) / obs_std
+        actions = (transitions.action - action_mean) / action_std
+        delta_obs = (transitions.next_observation - transitions.observation - delta_obs_mean) / delta_obs_std
+
+        key, subkey = jax.random.split(key)
+        dynamics_state, dynamics_loss = jit_dynamics_update(dynamics_state,
+                                                            observations,
+                                                            actions,
+                                                            delta_obs,
+                                                            subkey)
+        
+        if epoch % 10_000 == 0:
+            wandb.log({'dynamics_loss': dynamics_loss}, step=epoch)
+            print(f"Step {epoch}, Dynamics loss: {dynamics_loss:.4f}")
+
+    print("Dynamics training complete.")
+      
+    precoder = PrecoderNet(h_dims_conditioner=h_dims_conditioner,
+                          num_bijector_params=num_bijector_params,
+                          num_coupling_layers=num_coupling_layers,
+                          a_dim=mjx_model.nu
+                          )
     
-  class PrecoderNet(nn.Module):
-    h_dims_conditioner: int
-    num_bijector_params: int
-    num_coupling_layers: int
-    a_dim: int
-    def setup(self):
+    def update_precoder(precoder_state, dynamics_state, observations, key):
+
+      def info_nce_loss_scalar(y_prime_mean, y_prime_sigma, y_prime, tau=1.):
         
-      self.bijector = BijectorNet(h_dims_conditioner=self.h_dims_conditioner,
-                              num_bijector_params=self.num_bijector_params,
-                              num_coupling_layers=self.num_coupling_layers,
-                              a_dim=self.a_dim)
-    def __call__(self, z, observations):
+        # log prob communication channel as similarity function
+        diff = y_prime[None, :] - y_prime_mean[:, None]
+        var_i = y_prime_sigma[:, None]**2
+        sim = -jnp.log(y_prime_sigma[:, None]) - (diff**2) / (2 * var_i)
+        sim = sim / tau
         
-        # create state-dependent bijector
-        bijector = self.bijector(observations)
-
-        # pad z with zeros so input and output space have same dimensionality
-        z_with_zeros = jnp.concatenate((z, jnp.zeros(z.shape[:-1] + (self.a_dim-z.shape[-1],))), axis=-1)
+        # dot product as similarity function
+    #     sim = (z[:, None] * y[None, :]) / tau  # (batch, batch)
         
-        # map z to a
-        a = nn.tanh(bijector.forward(z_with_zeros))
-        return a
-    
-  precoder = PrecoderNet(h_dims_conditioner=h_dims_conditioner,
-                         num_bijector_params=num_bijector_params,
-                         num_coupling_layers=num_coupling_layers,
-                         a_dim=mjx_model.nu
-                         )
-  
-  def update_precoder(precoder_state, dynamics_state, buffer_state, key):
+        sim = sim.T # transpose so summing over zs
+        logits = sim - jnp.max(sim, axis=1, keepdims=True)
+        batch_size = y_prime.shape[0]
+        labels = jnp.eye(batch_size)
+        log_prob = nn.log_softmax(logits, axis=1)
+        loss = -jnp.sum(labels * log_prob) / batch_size
+        loss = jnp.where(jnp.isnan(loss), jnp.inf, loss)
+        return loss
 
-    def info_nce_loss_scalar(y_prime_mean, y_prime_sigma, y_prime, tau=0.1):
+      def precoder_loss_fn(params, key, observations, z_std=1.):
+        z_key, dyn_key, y_key, key = jax.random.split(key, 4)
+
+        z = jax.random.normal(z_key, (observations.shape[:-1] + (mjx_model.nv,))) * z_std
+        actions = precoder_state.apply_fn(params, z, observations)
+        
+        y_prime_mean, y_prime_log_var = dynamics_state.apply_fn(dynamics_state.params, observations, actions, dyn_key, deterministic=False)
+        y_prime_sigma = jnp.exp(y_prime_log_var * 0.5)
+        noise = jax.random.normal(y_key, y_prime_mean.shape)
+        y_prime = y_prime_mean + noise * y_prime_sigma
+
+        # vmap over dimension of y as covariance is diagonal so dimensions are independent
+        losses = jax.vmap(info_nce_loss_scalar, in_axes=(1,1,1))(y_prime_mean, y_prime_sigma, y_prime)
+        loss = jnp.mean(losses)  # Average loss across dimensions
+
+        return loss
       
-      # log prob communication channel as similarity function
-      diff = y_prime[None, :] - y_prime_mean[:, None]
-      var_i = y_prime_sigma[:, None]**2
-      sim = -jnp.log(y_prime_sigma[:, None]) - (diff**2) / (2 * var_i)
-      sim = sim / tau
-      
-      # dot product as similarity function
-  #     sim = (z[:, None] * y[None, :]) / tau  # (batch, batch)
-      
-      logits = sim - jnp.max(sim, axis=1, keepdims=True)
-      batch_size = y_prime.shape[0]
-      labels = jnp.eye(batch_size)
-      log_prob = nn.log_softmax(logits, axis=1)
-      loss = -jnp.sum(labels * log_prob) / batch_size
-      loss = jnp.where(jnp.isnan(loss), jnp.inf, loss)
-      return loss
+      key, subkey = jax.random.split(key)
 
-    def precoder_loss_fn(params, key, observations, z_std=1.):
-      z_key, dyn_key, y_key, key = jax.random.split(key, 4)
+      precoder_loss, grads = jax.value_and_grad(precoder_loss_fn, has_aux=False)(precoder_state.params, subkey, observations)
+      precoder_state = precoder_state.apply_gradients(grads=grads)
 
-      z = jax.random.normal(z_key, (observations.shape[:-1] + (mjx_model.nv,))) * z_std
-      actions = precoder_state.apply_fn(params, z, observations)
-      
-      y_prime_mean, y_prime_log_var = dynamics_state.apply_fn(dynamics_state.params, observations, actions, dyn_key, deterministic=False)
-      y_prime_sigma = jnp.exp(y_prime_log_var * 0.5)
-      noise = jax.random.normal(y_key, y_prime_mean.shape)
-      y_prime = y_prime_mean + noise * y_prime_sigma
+      return precoder_state, precoder_loss
 
-      # vmap over dimension of y as covariance is diagonal so dimensions are independent
-      losses = jax.vmap(info_nce_loss_scalar, in_axes=(1,1,1))(y_prime_mean, y_prime_sigma, y_prime)
-      loss = jnp.mean(losses)  # Average loss across dimensions
+    jit_update_precoder = jax.jit(update_precoder)
 
-      return loss
-     
     key, subkey = jax.random.split(key)
+    dummy_z = jnp.zeros((mjx_model.nv,))
+    precoder_state = TrainState.create(
+        apply_fn=precoder.apply,
+        params=precoder.init(subkey, dummy_z, dummy_obs),
+        tx=
+        optax.chain(
+            optax.clip_by_global_norm(max_grad_norm),
+            optax.adam(learning_rate=precoder_learning_rate),
+        ),
+    )
 
-    buffer_state, transitions = replay_buffer.sample(buffer_state)
-    observations = transitions.observation
+    # Training loop
+    for epoch in range(n_epochs_precoder):
 
-    precoder_loss, grads = jax.value_and_grad(precoder_loss_fn, has_aux=False)(precoder_state.params, subkey, observations)
-    precoder_state = precoder_state.apply_gradients(grads=grads)
+        key, subkey = jax.random.split(key)
+        buffer_state, transitions = replay_buffer.sample(buffer_state)
+        observations = (transitions.observation - obs_mean) / obs_std
+        precoder_state, precoder_loss = jit_update_precoder(precoder_state, dynamics_state, observations, subkey)
+        
+        if epoch % 10_000 == 0:
+            wandb.log({'precoder_loss': precoder_loss}, step=n_epochs_dynamics+epoch)
+            print(f"Step {epoch}, Precoder loss: {precoder_loss:.4f}")
 
-    return precoder_state, precoder_loss
+    print("Precoder training complete.")
 
-  jit_update_precoder = jax.jit(update_precoder)
+    ckpt = {'dynamics_state': dynamics_state,
+            'precoder_state': precoder_state,
+            'unflattened': unflattened}
+    orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+    save_args = orbax_utils.save_args_from_target(ckpt)
+    orbax_checkpointer.save(save_dir, ckpt, save_args=save_args)
 
-  key, subkey = jax.random.split(key)
-  dummy_z = jnp.zeros((mjx_model.nv,))
-  precoder_state = TrainState.create(
-      apply_fn=precoder.apply,
-      params=precoder.init(subkey, dummy_z, dummy_obs),
-      tx=
-      optax.chain(
-          optax.clip_by_global_norm(max_grad_norm),
-          optax.adam(learning_rate=precoder_learning_rate),
-      ),
-  )
+    def wrapped_apply_fn(params, z, o, obs_mean, obs_std):
+      return precoder.apply(params, z, (o - obs_mean) / obs_std)
+    precoder_state = TrainState.create(
+          apply_fn=functools.partial(wrapped_apply_fn, obs_mean=obs_mean, obs_std=obs_std),
+          params=precoder_state.params,
+          tx=optax.chain(
+            optax.clip_by_global_norm(max_grad_norm),
+            optax.adam(learning_rate=dynamics_learning_rate),
+        ),
+      )
 
-  # Training loop
-  for epoch in range(n_epochs_precoder):
+  else:
+  
+    orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+    raw_restored = orbax_checkpointer.restore('/nfs/nhome/live/jheald/myosuite/myosuite/envs/myo/mjx/checkpoint/tmj64vit')
+    precoder_state = raw_restored['precoder_state']
 
-      key, subkey = jax.random.split(key)
-      precoder_state, precoder_loss = jit_update_precoder(precoder_state, dynamics_state, buffer_state, subkey)
+    precoder = PrecoderNet(h_dims_conditioner=h_dims_conditioner,
+                            num_bijector_params=num_bijector_params,
+                            num_coupling_layers=num_coupling_layers,
+                            a_dim=mjx_model.nu
+                            )
+    obs_mean, obs_std = get_mean_and_std(raw_restored['unflattened']['observation'])
+    def wrapped_apply_fn(params, z, o, obs_mean, obs_std):
+      return precoder.apply(params, z, (o - obs_mean) / obs_std)
+    precoder_state = TrainState.create(
+          apply_fn=functools.partial(wrapped_apply_fn, obs_mean=obs_mean, obs_std=obs_std),
+          params=raw_restored['precoder_state']['params'],
+          tx=optax.chain(
+            optax.clip_by_global_norm(max_grad_norm),
+            optax.adam(learning_rate=dynamics_learning_rate),
+        ),
+      )
       
-      if epoch % 1_000 == 0:
-          wandb.log({'precoder_loss': precoder_loss}, step=n_epochs_dynamics+epoch)
-          print(f"Step {epoch}, Precoder loss: {precoder_loss:.4f}")
+  # policy_params_fn = functools.partial(policy_params_fn, eval_env=eval_env)
 
-  print("Precoder training complete.")
+  # clip actions (-1,1) before sigmoiding? ooo you should have sigmoid entropy not tanh bijection
+  # warm start policy
+  # REMEMBER YOU HAVE HARDCODED ORTHOGONAL INIT WITH SMALL GAIN!!!
+  # current no gravity comp
+
+  ppo_config = config_dict.create(
+    num_timesteps=50_000_000,
+    num_envs=1024,
+    batch_size=128,
+    num_minibatches=8,
+    unroll_length=10,
+    num_updates_per_batch=8,
+    num_resets_per_eval=1,
+    num_evals=50,
+    num_eval_envs=128,
+    reward_scaling=1,
+    episode_length=100,
+    clipping_epsilon=0.3,
+    normalize_observations=False,
+    action_repeat=1,
+    discounting=0.95,
+    gae_lambda=0.95,
+    normalize_advantage=True,
+    learning_rate=1e-4,
+    entropy_cost=0.001,
+    max_grad_norm=0.5,
+    # policy_params_fn=policy_params_fn,
+    # save_checkpoint_path=save_path,
+    # restore_checkpoint_path='/nfs/nhome/live/jheald/myo_mimic/brax_outputs/000003686400',
+    network_factory=config_dict.create(
+        # action_size=mjx_model.nv,
+        policy_hidden_layer_sizes=(256, 128),
+        value_hidden_layer_sizes=(256, 128),
+        activation=linen.swish,
+        policy_obs_key="state",
+        value_obs_key="state",
+        distribution_type='precoder_normal', # Literal['normal', 'tanh_normal'] = 'tanh_normal', sigmoid_normal precoder_normal
+        noise_std_type='scalar',
+        init_noise_std=.2,
+        state_dependent_std=False,
+    )
+  )
+            
+  times = [time.monotonic()]
+  def progress(num_steps, metrics):
+      times.append(time.monotonic())
+      print(f"Step {num_steps:_} at {(times[-1] - times[0]) / 60:.2f} minutes")
+      wandb.log(metrics, step=num_steps+n_epochs_dynamics+n_epochs_precoder)
+
+  # import datetime
+  # timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+  # BASE_SAVE_PATH = '/nfs/nhome/live/jheald/myo_mimic/brax_outputs'
+  # save_path = os.path.join(BASE_SAVE_PATH, timestamp, wandb_run.id)
+
+  # ppo_config['network_factory']['num_controlled_variables'] = env._num_controlled_variables
+  # ppo_config['network_factory']['dynamics_hidden_layer_sizes'] = config.agent.params.net_arch_dyn
+  # ppo_config['network_factory']['dynamics_obs_key'] = 'state_no_time'
+  # ppo_config['network_factory']['distribution_type'] = config.agent.params.distribution_type
+  # ppo_config['network_factory']['keep_prob'] = config.agent.params.keep_prob
+  # ppo_config['network_factory']['subspace_basis_method'] = config.agent.params.subspace_basis_method
+  # ppo_config['network_factory']['linearization_point'] = config.agent.params.linearization_point
+  # ppo_config['network_factory']['dim_dependent_latent_std'] = config.agent.params.dim_dependent_latent_std
+  # ppo_config['network_factory']['postprocessor'] = config.agent.params.postprocessor
+  # ppo_config['network_factory']['warm_start_bias'] = config.agent.params.warm_start_bias
+  # ppo_config['network_factory']['pi_init'] = config.agent.params.pi_init
+  # ppo_config['save_final_checkpoint_path'] = save_path
+  # ppo_config['dynamics_update'] =  config.agent.params.dynamics_update
+
+  ppo_params = dict(ppo_config)
+  network_factory = functools.partial(
+      objex_ppo_networks.make_ppo_networks, **ppo_params.pop("network_factory")
+  )
+  # Train the model
+  make_inference_fn, params, _ = objex_ppo.train(
+      environment=env,
+      precoder_state=precoder_state,
+      progress_fn=progress,
+      network_factory=network_factory,
+      wrap_env_fn=wrapper.wrap_for_brax_training,
+      num_eval_envs=ppo_params.pop("num_eval_envs"),
+      **ppo_params,
+  )
 
   breakpoint()
-
-
+  
   # import imageio
   # import mujoco
   # renderer = mujoco.Renderer(env._mj_model, height=240, width=320)

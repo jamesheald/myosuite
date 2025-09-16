@@ -58,9 +58,6 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
             self._tip_sids.append(mujoco.mj_name2id(self._mj_model, mujoco.mjtObj.mjOBJ_SITE.value, site))
             self._target_sids.append(mujoco.mj_name2id(self._mj_model, mujoco.mjtObj.mjOBJ_SITE.value, site + '_target'))
         self._tip_sids = jp.array(self._tip_sids)
-        self._target_sids = self._target_sids
-
-        # self._target_sids_np = self._target_sids
 
         self._n_substeps = int(config.ctrl_dt / config.sim_dt)
 
@@ -96,6 +93,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         qpos = jp.array(self._mj_model.qpos0)
         # TODO: Velocity initialization
         qvel = jp.zeros(self.mjx_model.nv)
+        # qvel = jax.random.normal(rng1, shape=(self.mjx_model.nv,)) * jp.sqrt(0.03)
 
         targets = self.generate_target_pose(rng2)
         self.n_targets = len(targets)
@@ -117,10 +115,10 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
                          qvel=qvel,
                          ctrl=jp.ones((self.mjx_model.nu,)),
                          impl="warp",
-                         nconmax=65*1000,
+                         nconmax=65*1024,
                          njmax=self.mj_model.njmax)
 
-        obs, _ = self._get_obs(data, info)
+        obs, precoder_obs, _ = self._get_obs(data, info)
 
         metrics = {
             'reach_reward': zero,
@@ -129,18 +127,19 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
             'solved': zero,
             'solved_frac': zero
         }
-        return State(data, {"state": obs}, reward, done, metrics, info)
+        return State(data, {"state": obs, "precoder": precoder_obs}, reward, done, metrics, info)
 
     def step(self, state: State, action: jp.ndarray) -> State:
         """Runs one timestep of the environment's dynamics."""
         
         norm_action = 1.0/(1.0+jp.exp(-5.0*(action-0.5))) 
-
         data = mjx_env.step(self.mjx_model, state.data, norm_action, self._n_substeps)
+
+        # data = mjx_env.step(self.mjx_model, state.data, action, self._n_substeps)
 
         state = state.replace(info={**state.info, 'my_step': state.info['my_step'] + 1})
 
-        obs, reach_err = self._get_obs(data, state.info)
+        obs, precoder_obs, reach_err = self._get_obs(data, state.info)
                 
         reach_dist = jp.linalg.norm(reach_err, axis=-1)
 
@@ -183,7 +182,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         )
 
         return state.replace(
-            data=data, obs={"state": obs}, reward=reward, done=done
+            data=data, obs={"state": obs, "precoder": precoder_obs}, reward=reward, done=done
         )
 
     def _get_obs(
@@ -199,7 +198,25 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
             tip_pos.ravel(),
             reach_err
         ])
-        return obs, reach_err
+        precoder_obs = obs = jp.concatenate([
+            data.qpos,
+            data.qvel*self.mjx_model.opt.timestep,
+            data.act
+        ])
+        return obs, precoder_obs, reach_err
+
+    # def _get_obs(
+    #         self, data: mjx.Data, info: Dict
+    # ) -> jp.ndarray:
+    #     """Observe qpos, qvel, act, tip_pos and reach_err."""
+    #     tip_pos = data.site_xpos[self._tip_sids]
+    #     reach_err = (info['targets']-tip_pos).ravel()
+    #     obs = jp.concatenate([
+    #         data.qpos,
+    #         data.qvel,
+    #         data.act
+    #     ])
+    #     return obs, reach_err
 
     # Accessors.
     @property
