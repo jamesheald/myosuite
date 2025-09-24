@@ -127,3 +127,4 @@ osl.log
 
 logs/
 myosuite/envs/myo/mjx/wandb/*
+myosuite/envs/myo/mjx/checkpoint/*
