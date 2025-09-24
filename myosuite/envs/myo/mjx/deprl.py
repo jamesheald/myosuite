@@ -565,9 +565,14 @@ def main(env_name):
     
     key, subkey = jax.random.split(key)
 
+    # orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+    # raw_restored = orbax_checkpointer.restore('/nfs/nhome/live/jheald/myosuite/myosuite/envs/myo/mjx/checkpoint/wwvvgty2')
+    # dynamics_state = raw_restored['dynamics_state']
+
     dynamics_state = TrainState.create(
         apply_fn=dynamics.apply,
         params=dynamics.init(subkey, dummy_obs, dummy_action, subkey, False),
+        # params=raw_restored['dynamics_state']['params']
         tx=
         optax.chain(
             optax.clip_by_global_norm(max_grad_norm),
@@ -614,7 +619,7 @@ def main(env_name):
                                                             delta_obs,
                                                             subkey)
         
-        if epoch % 10_000 == 0:
+        if epoch % 1_000 == 0:
             wandb.log({'dynamics_loss': dynamics_loss}, step=epoch)
             print(f"Step {epoch}, Dynamics loss: {dynamics_loss:.4f}")
 
@@ -626,7 +631,7 @@ def main(env_name):
                           a_dim=mjx_model.nu
                           )
     
-    def update_precoder(precoder_state, dynamics_state, observations, key):
+    def update_precoder(precoder_state, dynamics_state, observations, key, action_mean, action_std):
 
       def info_nce_loss_scalar(y_prime_mean, y_prime_sigma, y_prime, tau=1.):
         
@@ -648,11 +653,13 @@ def main(env_name):
         loss = jnp.where(jnp.isnan(loss), jnp.inf, loss)
         return loss
 
-      def precoder_loss_fn(params, key, observations, z_std=1.):
+      def precoder_loss_fn(params, key, observations, action_mean, action_std, z_std=1.):
         z_key, dyn_key, y_key, key = jax.random.split(key, 4)
 
         z = jax.random.normal(z_key, (observations.shape[:-1] + (mjx_model.nv,))) * z_std
         actions = precoder_state.apply_fn(params, z, observations)
+
+        actions = (actions - action_mean) / action_std
         
         y_prime_mean, y_prime_log_var = dynamics_state.apply_fn(dynamics_state.params, observations, actions, dyn_key, deterministic=False)
         y_prime_sigma = jnp.exp(y_prime_log_var * 0.5)
@@ -667,7 +674,7 @@ def main(env_name):
       
       key, subkey = jax.random.split(key)
 
-      precoder_loss, grads = jax.value_and_grad(precoder_loss_fn, has_aux=False)(precoder_state.params, subkey, observations)
+      precoder_loss, grads = jax.value_and_grad(precoder_loss_fn, has_aux=False)(precoder_state.params, subkey, observations, action_mean, action_std)
       precoder_state = precoder_state.apply_gradients(grads=grads)
 
       return precoder_state, precoder_loss
@@ -692,9 +699,14 @@ def main(env_name):
         key, subkey = jax.random.split(key)
         buffer_state, transitions = replay_buffer.sample(buffer_state)
         observations = (transitions.observation - obs_mean) / obs_std
-        precoder_state, precoder_loss = jit_update_precoder(precoder_state, dynamics_state, observations, subkey)
+        precoder_state, precoder_loss = jit_update_precoder(precoder_state,
+                                                            dynamics_state,
+                                                            observations,
+                                                            subkey,
+                                                            action_mean,
+                                                            action_std)
         
-        if epoch % 10_000 == 0:
+        if epoch % 1_000 == 0:
             wandb.log({'precoder_loss': precoder_loss}, step=n_epochs_dynamics+epoch)
             print(f"Step {epoch}, Precoder loss: {precoder_loss:.4f}")
 
@@ -769,7 +781,7 @@ def main(env_name):
     learning_rate=1e-4,
     entropy_cost=0.001,
     max_grad_norm=0.5,
-    # policy_params_fn=policy_params_fn,
+    policy_params_fn=policy_params_fn,
     # save_checkpoint_path=save_path,
     # restore_checkpoint_path='/nfs/nhome/live/jheald/myo_mimic/brax_outputs/000003686400',
     network_factory=config_dict.create(

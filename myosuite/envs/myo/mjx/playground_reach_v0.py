@@ -127,6 +127,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
             'solved': zero,
             'solved_frac': zero
         }
+
         return State(data, {"state": obs, "precoder": precoder_obs}, reward, done, metrics, info)
 
     def step(self, state: State, action: jp.ndarray) -> State:
@@ -182,6 +183,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         )
 
         return state.replace(
+            #data=data, obs=obs, reward=reward, done=done
             data=data, obs={"state": obs, "precoder": precoder_obs}, reward=reward, done=done
         )
 

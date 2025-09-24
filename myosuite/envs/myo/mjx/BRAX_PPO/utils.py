@@ -2,6 +2,8 @@ import jax
 from jax import numpy as jp
 import mujoco
 
+from functools import partial
+
 def get_precoder(dynamics_apply, normalizer_params, params, observation, linearization_point, dropout_mask, subspace_basis_method):
 
   def modified_gram_schmidt(vectors):
@@ -289,10 +291,10 @@ def get_controlled_variable_fn(self, controlled_variable):
     joint_ids = jp.array([mujoco.mj_name2id(self._mj_model, mujoco.mjtObj.mjOBJ_JOINT, name) for name in joint_names])
 
     body_names = [model + 'distal_thumb',
-                model + 'distph2',
-                model + 'distph3',
-                model + 'distph4',
-                model + 'distph5']
+                  model + 'distph2',
+                  model + 'distph3',
+                  model + 'distph4',
+                  model + 'distph5']
     body_ids = jp.array([mujoco.mj_name2id(self._mj_model, mujoco.mjtObj.mjOBJ_BODY, name) for name in body_names])
 
     for i in range(self._mj_model.nsite):
@@ -300,27 +302,27 @@ def get_controlled_variable_fn(self, controlled_variable):
             if name == model + "S_grasp":
                 palm_sid = i
 
-    num_controlled_variables =  len(joint_names) + 15
+    num_controlled_variables = len(joint_names) + 15
 
-    def get_controlled_variable(self, data):
+    def make_controlled_variable_fn(palm_sid, body_ids, joint_ids):
+      def controlled_variable(self, data):
+          palm_pos = data.site_xpos[palm_sid]
+          palm_rot = jp.reshape(data.site_xmat[palm_sid], (3, 3))
 
-      palm_pos = data.site_xpos[palm_sid]
-      palm_rot = jp.reshape(data.site_xmat[palm_sid], (3, 3))
+          tips = []
+          for bid in body_ids:
+              tip = palm_rot.T @ (data.xpos[bid] - palm_pos)
+              # tip = palm_rot.T @ (data.cvel[bid][3:] - palm_pos)
+              tips.append(tip)
 
-      tip0 = palm_rot.T @ (data.cvel[body_ids[0]][3:]-palm_pos)
-      tip1 = palm_rot.T @ (data.cvel[body_ids[1]][3:]-palm_pos)
-      tip2 = palm_rot.T @ (data.cvel[body_ids[2]][3:]-palm_pos)
-      tip3 = palm_rot.T @ (data.cvel[body_ids[3]][3:]-palm_pos)
-      tip4 = palm_rot.T @ (data.cvel[body_ids[4]][3:]-palm_pos)
+          digit_tips = jp.concatenate(tips, axis=0)
 
-      digit_tips = jp.concatenate((tip0,
-                                    tip1,
-                                    tip2,
-                                    tip3,
-                                    tip4), axis=0)
+          return jp.concatenate(
+              (data.qvel[joint_ids], digit_tips), axis=0
+          ).astype(jp.float32)
 
-      return jp.concatenate((data.qvel[joint_ids],
-                              digit_tips),
-                              axis=0).astype(jp.float32)
+      return controlled_variable
+    
+    get_controlled_variable = make_controlled_variable_fn(palm_sid, body_ids, joint_ids)
     
   return get_controlled_variable, num_controlled_variables
