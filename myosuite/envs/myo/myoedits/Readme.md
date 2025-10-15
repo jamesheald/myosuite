@@ -15,6 +15,6 @@ Model editing is performed via a [ModelEditor](https://github.com/jamesheald/myo
 
 MyoEdits has been used to create a simplified version of the myoArm model in which the muscles and joints of the digits have been removed.
 The [edit_fn](https://github.com/jamesheald/myosuite/blob/ba330261b55f38846b115fbe04055e56bf3d3fc0/myosuite/envs/myo/myoedits/__init__.py#L19) for the myoArmNoHandMuscles model
-detaches the digit bodies and their associated attachments (e.g. joints and muscles), before adding back simplified digit bodies as well as an index finger tip site.
+detaches the digit bodies and their associated attachments (e.g. joints and muscles), before adding back simplified digit bodies, as well as an index finger tip site.
 The model was used to create a set of [myoArmReach](https://myosuite.readthedocs.io/en/latest/suite.html#arm-reach) tasks for studying reaching movements without hand control.
-These tasks are defined by [registering an environment](https://github.com/jamesheald/myosuite/blob/ba330261b55f38846b115fbe04055e56bf3d3fc0/myosuite/envs/myo/myoedits/__init__.py#L82) with the editing function.
+The tasks are defined by [registering an environment](https://github.com/jamesheald/myosuite/blob/ba330261b55f38846b115fbe04055e56bf3d3fc0/myosuite/envs/myo/myoedits/__init__.py#L72) with the editing function.
